@@ -50,46 +50,49 @@ interface Social {
 interface Parsed {
   transcript: string;
   breakdown: string;
-  clips: VeoClip[];
+  clips: VeoClip[];        // Version Réel
+  cartoonClips: VeoClip[]; // Version Cartoon
   tips: string;
   social: Social;
   raw: string;
 }
 
+// Helper: extract a JSON array from a text block
+function extractJsonArray(block: string): VeoClip[] {
+  if (!block) return [];
+  try {
+    return JSON.parse(block.replace(/```json|```/g, "").trim());
+  } catch {
+    try {
+      const match = block.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+      if (match) return JSON.parse(match[0]);
+    } catch { /* leave empty */ }
+  }
+  return [];
+}
+
 function parseOutput(text: string): Parsed {
   const transcript = text.match(/🎤 AUDIO TRANSCRIPT([\s\S]*?)---/)?.[1]?.trim() || "";
-  const breakdown = text.match(/🎬 VIDEO BREAKDOWN([\s\S]*?)---/)?.[1]?.trim() || "";
-  const tips = text.match(/✅ VEO 3 TIPS:([\s\S]*?)(?:---|📱|$)/)?.[1]?.trim() || "";
+  const breakdown  = text.match(/🎬 VIDEO BREAKDOWN([\s\S]*?)---/)?.[1]?.trim() || "";
+  const tips       = text.match(/✅ VEO 3 TIPS:([\s\S]*?)(?:---|📱|$)/)?.[1]?.trim() || "";
 
   const socialBlock = text.match(/📱 SOCIAL MEDIA([\s\S]*?)$/)?.[1]?.trim() || "";
-  const slug = socialBlock.match(/SLUG:\s*(.+)/)?.[1]?.trim() || "";
+  const slug  = socialBlock.match(/SLUG:\s*(.+)/)?.[1]?.trim() || "";
   const title = socialBlock.match(/TITLE:\s*(.+)/)?.[1]?.trim() || "";
-  const post = socialBlock.match(/FACEBOOK REEL POST:\n([\s\S]+)/)?.[1]?.trim() || "";
+  const post  = socialBlock.match(/FACEBOOK REEL POST:\n([\s\S]+)/)?.[1]?.trim() || "";
 
-  // Extract JSON array from CLIPS section
-  let clips: VeoClip[] = [];
-  const clipsBlock = text.match(/📽️ CLIPS\s*([\s\S]*?)---/)?.[1]?.trim() || "";
-  if (clipsBlock) {
-    try {
-      const jsonStr = clipsBlock.replace(/```json|```/g, "").trim();
-      clips = JSON.parse(jsonStr);
-    } catch {
-      // fallback: try to find any JSON array in the full text
-      try {
-        const jsonMatch = text.match(/\[\s*\{[\s\S]*?\}\s*\]/);
-        if (jsonMatch) clips = JSON.parse(jsonMatch[0]);
-      } catch { /* leave empty */ }
-    }
-  }
+  // ── NEW: parse both versions ──────────────────────────────────────
+  const realBlock    = text.match(/🎭 VERSION RÉEL — CLIPS\s*([\s\S]*?)---/)?.[1]?.trim() || "";
+  const cartoonBlock = text.match(/🎨 VERSION CARTOON — CLIPS\s*([\s\S]*?)---/)?.[1]?.trim() || "";
 
-  return {
-    transcript,
-    breakdown,
-    clips,
-    tips,
-    social: { slug, title, post },
-    raw: text,
-  };
+  // Fallback: if old format without version headers, use the legacy CLIPS block
+  const legacyBlock  = text.match(/📽️ CLIPS\s*([\s\S]*?)---/)?.[1]?.trim() || "";
+
+  const clips        = extractJsonArray(realBlock)    || extractJsonArray(legacyBlock);
+  const cartoonClips = extractJsonArray(cartoonBlock);
+  // ─────────────────────────────────────────────────────────────────
+
+  return { transcript, breakdown, clips, cartoonClips, tips, social: { slug, title, post }, raw: text };
 }
 
 function CopyButton({ text, label = "Copier" }: { text: string; label?: string }) {
@@ -112,8 +115,8 @@ function durationColor(d: string) {
 
 function functionColor(f: string) {
   if (f?.includes("introduction")) return "text-blue-400";
-  if (f?.includes("development")) return "text-amber-400";
-  if (f?.includes("peak")) return "text-red-400";
+  if (f?.includes("development"))  return "text-amber-400";
+  if (f?.includes("peak"))         return "text-red-400";
   return "text-green-400";
 }
 
@@ -127,16 +130,16 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ClipCard({ clip, index }: { clip: VeoClip; index: number }) {
+function ClipCard({ clip, index, isCartoon }: { clip: VeoClip; index: number; isCartoon?: boolean }) {
   const [showDetails, setShowDetails] = useState(false);
   const jsonString = JSON.stringify(clip, null, 2);
   const dur = clip.clip_duration || "8s";
 
   return (
-    <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 mb-3">
+    <div className={`rounded-xl border p-4 mb-3 ${isCartoon ? "border-pink-500/15 bg-pink-500/[0.02]" : "border-white/8 bg-white/[0.02]"}`}>
       {/* Header */}
       <div className="flex items-center gap-2 flex-wrap mb-3">
-        <span className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
+        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isCartoon ? "bg-pink-600" : "bg-violet-600"}`}>
           {index + 1}
         </span>
         <span className="text-sm font-medium text-white/90">{clip.clip_number}</span>
@@ -155,16 +158,18 @@ function ClipCard({ clip, index }: { clip: VeoClip; index: number }) {
         )}
       </div>
 
-      {/* JSON prompt — copy-ready */}
-      <div className="bg-black/40 rounded-lg p-3 mb-3 border border-violet-500/10">
+      {/* JSON prompt */}
+      <div className={`rounded-lg p-3 mb-3 border ${isCartoon ? "bg-black/40 border-pink-500/10" : "bg-black/40 border-violet-500/10"}`}>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-xs text-violet-400 font-medium">✨ Prompt JSON Veo 3</p>
+          <p className={`text-xs font-medium ${isCartoon ? "text-pink-400" : "text-violet-400"}`}>
+            {isCartoon ? "🎨 Prompt JSON Cartoon" : "✨ Prompt JSON Veo 3"}
+          </p>
           <CopyButton text={jsonString} label="Copier le JSON" />
         </div>
         <pre className="text-xs text-white/70 leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{jsonString}</pre>
       </div>
 
-      {/* Dialogue highlight */}
+      {/* Dialogue */}
       {clip.audio?.dialogue?.line && clip.audio.dialogue.line !== "none" && (
         <div className="bg-indigo-500/5 border border-indigo-500/15 rounded-lg p-3 mb-3">
           <p className="text-xs text-indigo-400 mb-1">🗣️ {clip.audio.dialogue.character}</p>
@@ -176,14 +181,18 @@ function ClipCard({ clip, index }: { clip: VeoClip; index: number }) {
       {clip.audio?.vocal_style?.voice_tone && (
         <div className="bg-orange-500/5 border border-orange-500/15 rounded-lg p-2 mb-3">
           <p className="text-xs text-orange-400 mb-1">🎙️ Voice</p>
-          <p className="text-xs text-white/60">{clip.audio.vocal_style.voice_tone} • {clip.audio.vocal_style.delivery_speed} • {clip.audio.vocal_style.vocal_volume}</p>
+          <p className="text-xs text-white/60">
+            {clip.audio.vocal_style.voice_tone} • {clip.audio.vocal_style.delivery_speed} • {clip.audio.vocal_style.vocal_volume}
+          </p>
         </div>
       )}
 
-      {/* Wardrobe reskin */}
+      {/* Wardrobe */}
       {clip.subject?.wardrobe && clip.subject.wardrobe !== "not applicable" && (
-        <div className="bg-green-500/5 border border-green-500/15 rounded-lg p-2 mb-3">
-          <p className="text-xs text-green-400 mb-1">✨ Wardrobe Reskin</p>
+        <div className={`border rounded-lg p-2 mb-3 ${isCartoon ? "bg-pink-500/5 border-pink-500/15" : "bg-green-500/5 border-green-500/15"}`}>
+          <p className={`text-xs mb-1 ${isCartoon ? "text-pink-400" : "text-green-400"}`}>
+            {isCartoon ? "🎨 Wardrobe Cartoon" : "✨ Wardrobe Reskin"}
+          </p>
           <p className="text-xs text-white/70">{clip.subject.wardrobe}</p>
         </div>
       )}
@@ -196,17 +205,17 @@ function ClipCard({ clip, index }: { clip: VeoClip; index: number }) {
 
       {showDetails && (
         <div className="mt-3 space-y-2 border-t border-white/5 pt-3">
-          <Row label="Style" value={clip.style} />
-          <Row label="Composition" value={clip.shot?.composition} />
-          <Row label="Camera" value={clip.shot?.camera_motion} />
-          <Row label="Subject" value={clip.subject?.description} />
-          <Row label="Environment" value={clip.scene?.environment} />
-          <Row label="Lighting" value={clip.scene?.lighting} />
-          <Row label="Expression" value={clip.direction?.expression_or_behavior} />
+          <Row label="Style"        value={clip.style} />
+          <Row label="Composition"  value={clip.shot?.composition} />
+          <Row label="Camera"       value={clip.shot?.camera_motion} />
+          <Row label="Subject"      value={clip.subject?.description} />
+          <Row label="Environment"  value={clip.scene?.environment} />
+          <Row label="Lighting"     value={clip.scene?.lighting} />
+          <Row label="Expression"   value={clip.direction?.expression_or_behavior} />
           <Row label="Body language" value={clip.direction?.body_language} />
           <Row label="Director note" value={clip.direction?.emotional_note} />
           <Row label="Visual action" value={clip.visual_action} />
-          <Row label="Music" value={clip.audio?.background_music} />
+          <Row label="Music"        value={clip.audio?.background_music} />
         </div>
       )}
     </div>
@@ -250,13 +259,14 @@ function SocialCard({ social }: { social: Social }) {
 }
 
 export default function Home() {
-  const [url, setUrl] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [url, setUrl]         = useState("");
+  const [file, setFile]       = useState<File | null>(null);
   const [context, setContext] = useState("");
-  const [parsed, setParsed] = useState<Parsed | null>(null);
+  const [parsed, setParsed]   = useState<Parsed | null>(null);
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<"url" | "file">("url");
-  const [activeTab, setActiveTab] = useState<"clips" | "transcript" | "raw">("clips");
+  const [mode, setMode]       = useState<"url" | "file">("url");
+  const [activeTab, setActiveTab]         = useState<"clips" | "transcript" | "raw">("clips");
+  const [versionToggle, setVersionToggle] = useState<"real" | "cartoon">("real"); // ← NEW
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleGenerate = async () => {
@@ -266,28 +276,35 @@ export default function Home() {
     try {
       const formData = new FormData();
       if (file) formData.append("file", file);
-      if (url) formData.append("url", url);
+      if (url)  formData.append("url", url);
       if (context) formData.append("context", context);
-      const res = await fetch("/api/generate", { method: "POST", body: formData });
+      const res  = await fetch("/api/generate", { method: "POST", body: formData });
       const data = await res.json();
       if (data.prompt) {
         setParsed(parseOutput(data.prompt));
         setActiveTab("clips");
+        setVersionToggle("real");
       } else {
-        setParsed({ transcript: "", breakdown: "", clips: [], tips: data.error || "Erreur inconnue", social: { slug: "", title: "", post: "" }, raw: data.error });
+        setParsed({ transcript: "", breakdown: "", clips: [], cartoonClips: [], tips: data.error || "Erreur inconnue", social: { slug: "", title: "", post: "" }, raw: data.error });
       }
     } catch {
-      setParsed({ transcript: "", breakdown: "", clips: [], tips: "Erreur de connexion.", social: { slug: "", title: "", post: "" }, raw: "Erreur de connexion." });
+      setParsed({ transcript: "", breakdown: "", clips: [], cartoonClips: [], tips: "Erreur de connexion.", social: { slug: "", title: "", post: "" }, raw: "Erreur de connexion." });
     }
     setLoading(false);
   };
 
-  const totalDuration = parsed?.clips.reduce((acc, c) => {
+  // ── Active clips based on toggle ──────────────────────────────────
+  const activeClips  = versionToggle === "cartoon" ? (parsed?.cartoonClips ?? []) : (parsed?.clips ?? []);
+  const isCartoon    = versionToggle === "cartoon";
+  const hasCartoon   = (parsed?.cartoonClips?.length ?? 0) > 0;
+  // ─────────────────────────────────────────────────────────────────
+
+  const totalDuration = activeClips.reduce((acc, c) => {
     const d = parseInt(c.clip_duration || "8");
     return acc + (isNaN(d) ? 8 : d);
-  }, 0) || 0;
+  }, 0);
 
-  const allJson = parsed?.clips ? JSON.stringify(parsed.clips, null, 2) : "";
+  const allJson = JSON.stringify(activeClips, null, 2);
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white font-sans">
@@ -375,20 +392,49 @@ export default function Home() {
             {/* Stats bar */}
             <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-white/[0.03] border border-white/8 flex-wrap">
               <span className="text-xs text-white/40">Résultat :</span>
-              <span className="text-xs bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded-full">🎬 {parsed.clips.length} clips</span>
+              <span className="text-xs bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded-full">🎬 {activeClips.length} clips</span>
               <span className="text-xs bg-white/10 text-white/50 px-2 py-0.5 rounded-full">⏱️ ~{totalDuration}s</span>
-              {parsed.clips.filter(c => c.clip_duration === "4s").length > 0 && <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full">{parsed.clips.filter(c => c.clip_duration === "4s").length}× 4s</span>}
-              {parsed.clips.filter(c => c.clip_duration === "6s").length > 0 && <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">{parsed.clips.filter(c => c.clip_duration === "6s").length}× 6s</span>}
-              {parsed.clips.filter(c => c.clip_duration === "8s").length > 0 && <span className="text-xs bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded-full">{parsed.clips.filter(c => c.clip_duration === "8s").length}× 8s</span>}
+              {activeClips.filter(c => c.clip_duration === "4s").length > 0 && <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full">{activeClips.filter(c => c.clip_duration === "4s").length}× 4s</span>}
+              {activeClips.filter(c => c.clip_duration === "6s").length > 0 && <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">{activeClips.filter(c => c.clip_duration === "6s").length}× 6s</span>}
+              {activeClips.filter(c => c.clip_duration === "8s").length > 0 && <span className="text-xs bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded-full">{activeClips.filter(c => c.clip_duration === "8s").length}× 8s</span>}
               <div className="ml-auto"><CopyButton text={allJson} label="Tout copier" /></div>
             </div>
+
+            {/* ── VERSION TOGGLE ── */}
+            <div className="flex gap-2 mb-4 p-1 rounded-xl bg-white/5 w-fit">
+              <button
+                onClick={() => setVersionToggle("real")}
+                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+                  versionToggle === "real"
+                    ? "bg-violet-600 text-white shadow-lg shadow-violet-900/40"
+                    : "text-white/40 hover:text-white/70"
+                }`}
+              >
+                🎭 Réel
+              </button>
+              <button
+                onClick={() => setVersionToggle("cartoon")}
+                disabled={!hasCartoon}
+                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+                  versionToggle === "cartoon"
+                    ? "bg-pink-600 text-white shadow-lg shadow-pink-900/40"
+                    : hasCartoon
+                      ? "text-white/40 hover:text-white/70"
+                      : "text-white/15 cursor-not-allowed"
+                }`}
+              >
+                🎨 Cartoon
+                {!hasCartoon && <span className="text-xs opacity-50">(non disponible)</span>}
+              </button>
+            </div>
+            {/* ── END VERSION TOGGLE ── */}
 
             {/* Tabs */}
             <div className="flex gap-1 p-1 rounded-xl bg-white/5 mb-4 w-fit">
               {(["clips", "transcript", "raw"] as const).map((tab) => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab ? "bg-white/10 text-white" : "text-white/40 hover:text-white/60"}`}>
-                  {tab === "clips" ? `📽️ Clips (${parsed.clips.length})` : tab === "transcript" ? "🎤 Transcription" : "📄 Brut"}
+                  {tab === "clips" ? `📽️ Clips (${activeClips.length})` : tab === "transcript" ? "🎤 Transcription" : "📄 Brut"}
                 </button>
               ))}
             </div>
@@ -400,9 +446,9 @@ export default function Home() {
                     <pre className="text-xs text-white/40 whitespace-pre-wrap">{parsed.breakdown}</pre>
                   </div>
                 )}
-                {parsed.clips.length > 0
-                  ? parsed.clips.map((clip, i) => <ClipCard key={i} clip={clip} index={i} />)
-                  : <p className="text-sm text-white/30 text-center py-8">Aucun clip JSON parsé — voir l'onglet Brut</p>
+                {activeClips.length > 0
+                  ? activeClips.map((clip, i) => <ClipCard key={i} clip={clip} index={i} isCartoon={isCartoon} />)
+                  : <p className="text-sm text-white/30 text-center py-8">Aucun clip parsé — voir l'onglet Brut</p>
                 }
                 {parsed.tips && (
                   <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
