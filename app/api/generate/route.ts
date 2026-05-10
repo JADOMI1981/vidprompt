@@ -49,6 +49,7 @@ IF VIDEO_DURATION <= 28s → 4 clips (mix of 6s and 8s)
 IF VIDEO_DURATION > 28s  → divide by 8, round up, all 8s clips
 
 NEVER create more clips than the formula requires.
+Both versions (REAL and CARTOON) must have the EXACT same number of clips.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 3 — TRANSCRIBE DIALOGUE (ONCE)
@@ -75,10 +76,10 @@ Change ONLY:
 COPY-PASTE subject description, environment, lighting, and vocal_style EXACTLY across all clips.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 6 — GENERATE JSON CLIPS
+STEP 6A — GENERATE REAL VERSION CLIPS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Output each clip as a valid JSON object using EXACTLY this structure.
-Output ALL clips as a JSON array inside the CLIPS section.
+Output ALL clips as a JSON array inside the REAL VERSION CLIPS section.
 
 {
   "clip_number": "Clip X (Xs - Xs)",
@@ -120,6 +121,25 @@ Output ALL clips as a JSON array inside the CLIPS section.
 }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 6B — GENERATE CARTOON VERSION CLIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate the EXACT same clips as the REAL version BUT adapted for Pixar-style 3D animation.
+Same dialogue, same timing, same clip count, same camera logic.
+
+CARTOON RULES:
+• style: "Pixar-style 3D animation, vibrant saturated colors, expressive cartoon characters, comedic timing, smooth animation"
+• subject.description: Rewrite as a cartoon character — exaggerated facial features, big expressive eyes, rounded proportions, same ethnicity/age/gender kept but stylized
+• subject.wardrobe: Same reskinned color but described in cartoon style (e.g. "bright cobalt blue oversized hoodie, cartoon stitching detail")
+• scene.environment: Same American location but cartoon version — "cozy animated American living room, warm saturated tones, soft cartoon shadows, Pixar-quality render"
+• scene.lighting: Cartoon-adapted version — "warm animated rim light, soft cartoon ambient glow"
+• direction.expression_or_behavior: Exaggerated cartoon expression (e.g. "jaw-drop comedic expression, eyes wide as saucers")
+• direction.emotional_note: Add comedic cartoon energy note
+• audio.vocal_style.voice_tone: Keep same voice profile but add "animated voice actor style"
+• Everything else (dialogue, timing, clip_function) stays IDENTICAL to the real version
+
+Use EXACTLY the same JSON structure as the real version.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 7 — SOCIAL MEDIA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SLUG: lowercase, hyphens, max 60 chars
@@ -143,10 +163,18 @@ Clip formula: [formula] = [N] clips of [duration]
 
 ---
 
-📽️ CLIPS
+🎭 VERSION RÉEL — CLIPS
 [
-  { ...clip 1 JSON... },
-  { ...clip 2 JSON... }
+  { ...clip 1 real JSON... },
+  { ...clip 2 real JSON... }
+]
+
+---
+
+🎨 VERSION CARTOON — CLIPS
+[
+  { ...clip 1 cartoon JSON... },
+  { ...clip 2 cartoon JSON... }
 ]
 
 ---
@@ -182,7 +210,7 @@ FACEBOOK REEL POST:
     } else if (url) {
       result = await model.generateContent([
         systemPrompt,
-        `Analyze this video. Measure EXACT duration, apply clip formula, split dialogue without repetition, apply minimal reskin (colors + decor only), output each clip as a valid JSON object, and generate social media metadata: ${url}`,
+        `Analyze this video. Measure EXACT duration, apply clip formula, split dialogue without repetition, apply minimal reskin (colors + decor only), generate BOTH the real version clips AND the cartoon version clips using the exact same structure, and generate social media metadata: ${url}`,
       ]);
     } else {
       return NextResponse.json(
